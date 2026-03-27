@@ -1,15 +1,16 @@
 # Weiyun API V3 - PHP Client
 
-This directory provides the Web-centric PHP implementation of the Tencent Weiyun V3 MCP API toolkit. 
+This directory provides the PHP implementation of the Tencent Weiyun V3 MCP API toolkit.
 
-Due to integers differing in length across 32-bit and 64-bit PHP installations, our solution carries a standalone `SHA1` rotating calculator that explicitly masks and handles strict integer overflow matching (`& 0xFFFFFFFF`) natively in PHP!
+Due to integer differences across 32-bit and 64-bit PHP installations, the solution carries a standalone `SHA1` class that explicitly masks integer overflow with `& 0xFFFFFFFF`, ensuring byte-accurate little-endian register state extraction required by the Weiyun upload protocol.
 
 ## Requirements
 - PHP 7.4 / 8.0+
-- `PHPUnit` (if you intend to run test coverage)
+- `PHPUnit` (optional, for running unit tests)
 
 ## Quick Start
-You do not need Composer to use this locally, although integrating it into a composer package is trivial.
+
+No Composer required for basic usage.
 
 ```php
 <?php
@@ -20,40 +21,77 @@ $token = "your_mcp_token_here";
 $client = new Client($token);
 
 // 1. List Files
-$listRes = $client->listFiles(10, 0);
+$listRes = $client->listFiles(50, 0, 0);
 print_r($listRes);
 
-// 2. Obtain an HTTPS Download Link
-// Keep in mind when generating share or download links 
-// you MUST have the root folder key, not just the file ID!
-$downloadUrlObject = $client->getDownloadLink("file_123", "dir_456");
-echo "URL: " . $downloadUrlObject['items'][0]['https_download_url'] . "\n";
+// 2. Upload a File (two-phase FTN protocol, auto-chunked)
+$upRes = $client->upload("/tmp/my_file.zip", $pdirKey = null);
+echo "Uploaded! File ID: " . $upRes['file_id'] . "\n";
 
-// 3. Perform the Upload Hashing Phase
-// Because the server does not accept final hashes, it requires partial chunk hashes.
-$uploadBlockInfo = $client->calcUploadParams("/tmp/my_file.zip");
-echo "Chunk Count: " . count($uploadBlockInfo['block_sha_list']) . "\n";
-print_r($uploadBlockInfo);
+// 3. Get HTTPS Download Links
+$dlRes = $client->download([["file_id" => "file_123", "pdir_key" => "dir_456"]]);
+echo "URL: " . $dlRes['items'][0]['https_download_url'] . "\n";
 
-// 4. Custom Calling (For deletion or sharing bindings)
-$response = $client->call("weiyun.gen_share_link", [
-    "file_list" => [
-        ["file_id" => "file_123", "pdir_key" => "dir_456"]
-    ]
-]);
-print_r($response);
+// 4. Generate a Share Link
+$shareRes = $client->genShareLink(
+    [["file_id" => "file_123", "pdir_key" => "dir_456"]],
+    null,
+    "My Share"
+);
+echo "Share: " . $shareRes['short_url'] . "\n";
+
+// 5. Delete Files
+$delRes = $client->delete(
+    [["file_id" => "file_123", "pdir_key" => "dir_456"]],
+    null,
+    false  // false = move to trash, true = permanent delete
+);
+print_r($delRes);
+```
+
+## Running Tests
+
+### Unit Tests (PHPUnit)
+```bash
+./vendor/bin/phpunit tests/
+```
+
+Or standalone (no Composer):
+```bash
+php tests/ClientTest.php
+```
+
+### Integration Tests
+
+Requires a folder named `CI` at the root of your Weiyun drive.
+
+```bash
+export WEIYUN_MCP_TOKEN="your_token_here"
+php integration_tests.php --test all
+# Options: list | upload | download | delete | all
 ```
 
 ## Class Reference
 
 ### `Weiyun\Client`
-* `__construct($token, $mcpUrl)`: Connects client references via POST stream contexts.
-* `call($toolName, $arguments)`: Submits arbitrary RPC `tools/call`.
-* `listFiles($limit, $offset)`: Fetches directory contents.
-* `getDownloadLink($fileId, $pdirKey)`: Binds items to secure HTTP resources.
-* `calcUploadParams($filePath)`: Feeds large files cleanly into our integrated PHP custom un-finalized SHA extraction method bridging the FTN constraints. 
+
+| Method | Description |
+|---|---|
+| `__construct($token, $mcpUrl)` | Initializes the client |
+| `call($toolName, $arguments)` | Arbitrary JSON-RPC `tools/call` |
+| `listFiles($limit, $getType, $offset, $dirKey, $pdirKey)` | List files and directories |
+| `download($items)` | Get HTTPS download links for a list of `["file_id", "pdir_key"]` items |
+| `delete($fileList, $dirList, $deleteCompletely)` | Delete files/folders (trash or permanent) |
+| `genShareLink($fileList, $dirList, $shareName)` | Generate a public share link |
+| `calcUploadParams($filePath)` | Compute chunked SHA1 states + MD5 for upload |
+| `upload($filePath, $pdirKey, $maxRounds)` | Full two-phase FTN upload with auto-retry |
 
 ### `Weiyun\SHA1`
-*The internal rotation engine. Used strictly inside `calcUploadParams()` for processing the standard 524288 byte hashing requirements in pure PHP syntax.*
-- `get_state()`: Packs `V5` internal Little-Endian integers into a clean hex string representing the H0-H4 buffers. 
-- `hexdigest()`: Fallback standard 64 byte 0x80 padding calculator matching equivalent systems.
+
+*Internal rotation engine used by `calcUploadParams()` for the 512KB block hashing.*
+
+| Method | Description |
+|---|---|
+| `update($data)` | Feed data into the SHA1 state |
+| `get_state()` | Export little-endian H0–H4 as hex (intermediate state) |
+| `hexdigest()` | Standard big-endian SHA1 hex string of full input |

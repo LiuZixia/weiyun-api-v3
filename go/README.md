@@ -1,6 +1,6 @@
 # Weiyun API V3 - Go Client
 
-This directory contains the high-performance Go implementation for the Tencent Weiyun V3 MCP API. The client circumvents standard language access limits by using `reflect` and `unsafe.Pointer` to extract the `crypto/sha1` internal structures required for the Weiyun upload protocol.
+This directory contains the Go implementation of the Tencent Weiyun V3 MCP API. The client uses `reflect` and `unsafe.Pointer` to extract the `crypto/sha1` internal registers required by the Weiyun upload protocol.
 
 ## Requirements
 - Go 1.20+
@@ -16,47 +16,87 @@ go mod tidy
 package main
 
 import (
-	"fmt"
-	"log"
-	
-	"github.com/youruser/weiyun-api-v3/go/weiyun"
+    "fmt"
+    "log"
+
+    "github.com/youruser/weiyun-api-v3/go/weiyun"
 )
 
 func main() {
-	// Initialize a client instance
-	api := weiyun.New("your_mcp_token_here")
+    api := weiyun.New("your_mcp_token_here")
 
-	// 1. List Files
-	// Retrieve a map of the top 10 items at the root
-	listResp, err := api.ListFiles(10, 0)
-	if err != nil {
-		log.Fatalf("Failed to list files: %v", err)
-	}
-	fmt.Println("File List Response:", listResp)
+    // 1. List Files
+    listRes, err := api.ListFiles(50, 0)
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println("File List:", listRes)
 
-	// 2. Upload Pre-Calculation 
-	// The client auto-calculates piece intervals and exposes unfinalized SHA pieces
-	params, err := weiyun.CalcUploadParams("./test.txt")
-	if err != nil {
-		log.Fatalf("Checksum extraction error: %v", err)
-	}
-	
-	fmt.Printf("Custom SHA Internal Blocks Checksum Setup:\n%#v\n", params)
+    // 2. Upload a File (two-phase FTN protocol, auto-chunked)
+    upRes, err := api.Upload("./my_file.zip", "" /* root */, 50)
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println("Uploaded! File ID:", upRes["file_id"])
 
-	// 3. Generic MCP Caller (Used for building Download/Delete abstractions)
-	args := map[string]interface{}{
-		"items": []map[string]string{
-			{"file_id": "file_123", "pdir_key": "dir_456"},
-		},
-	}
-	
-	downloadResp, err := api.Call("weiyun.download", args)
-	fmt.Println(downloadResp)
+    // 3. Get HTTPS Download Links
+    dlRes, err := api.Download([]map[string]interface{}{
+        {"file_id": "file_123", "pdir_key": "dir_456"},
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println("Download Response:", dlRes)
+
+    // 4. Generate a Share Link
+    shareRes, err := api.GenShareLink(
+        []map[string]interface{}{{"file_id": "file_123", "pdir_key": "dir_456"}},
+        nil,
+        "My Share",
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println("Share:", shareRes["short_url"])
+
+    // 5. Delete Files
+    delRes, err := api.Delete(
+        []map[string]interface{}{{"file_id": "file_123", "pdir_key": "dir_456"}},
+        nil,
+        false, // false = move to trash, true = permanent delete
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println("Deleted:", delRes)
 }
 ```
 
-## Package Functions
-* `New(token string) *Client`: Instantiates the API wrapper pointing to the official `api/v3/mcpserver` endpoints.
-* `(c *Client) Call(tool string, args map[string]interface{})`: The core abstract caller to bridge local environments into MCP interactions.
-* `(c *Client) ListFiles(limit int, offset int)`: Quickly retrieve remote documents.
-* `CalcUploadParams(filePath string)`: Evaluates files with a custom 512KB offset stream tracking SHA1 internal pointers (`h0` to `h4`) into small-endian byte formatting sequences.
+## Running Tests
+
+### Unit Tests
+```bash
+go test ./weiyun/... -v
+```
+
+### Integration Tests
+
+Requires a folder named `CI` at the root of your Weiyun drive.
+
+```bash
+export WEIYUN_MCP_TOKEN="your_token_here"
+go test -tags integration ./weiyun/... -v
+```
+
+## Package Reference
+
+| Function / Method | Description |
+|---|---|
+| `New(token string) *Client` | Create a client pointing to the official MCP endpoint |
+| `(c *Client) Call(tool string, args map[string]interface{})` | Generic JSON-RPC `tools/call` |
+| `(c *Client) ListFiles(limit int, offset int)` | List files and directories |
+| `(c *Client) Download(items []map[string]interface{})` | Get HTTPS download links |
+| `(c *Client) Delete(fileList, dirList []map[string]interface{}, deleteCompletely bool)` | Delete files/folders |
+| `(c *Client) GenShareLink(fileList, dirList []map[string]interface{}, shareName string)` | Generate a public share link |
+| `CalcUploadParams(filePath string)` | Compute chunked SHA1 states + MD5 for upload |
+| `(c *Client) Upload(filePath, pdirKey string, maxRounds int)` | Full two-phase FTN upload with auto-retry |
