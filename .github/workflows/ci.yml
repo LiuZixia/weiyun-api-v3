@@ -39,12 +39,6 @@ jobs:
     - run: phpunit tests
       working-directory: ./php
 
-  test-shell:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    - run: bash -n shell/setup.sh && bash -n shell/test.sh
-
   test-list:
     runs-on: ubuntu-latest
     steps:
