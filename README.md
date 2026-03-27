@@ -14,7 +14,7 @@ A comprehensive, multi-language implementation of the **Tencent Weiyun V3 MCP AP
   * **Complete File Management**: List, batch download, batch delete, and generate sharing links.
   * **Advanced Upload Protocol**: Full implementation of the two-stage (Pre-upload + Chunked) FTN protocol.
   * **Unique SHA1 Logic**: Includes the specialized "Little-Endian SHA1 Register State" extraction required by Weiyun servers.
-  * **Multi-Language Support**: Native implementations for Python, Go, PHP, and Shell.
+  * **Multi-Language Support**: Native implementations for Python, Go, and PHP.
   * **AI-Ready**: Fully compatible with the Model Context Protocol (MCP) for LLM integration.
 
 -----
@@ -106,15 +106,6 @@ $client->genShareLink([["file_id" => "f_123", "pdir_key" => "d_456"]]);
 cd php
 ./vendor/bin/phpunit tests/                                        # unit tests
 WEIYUN_MCP_TOKEN=xxx php integration_tests.php --test all         # integration tests
-```
-
-### 4\. Shell (CLI)
-
-A wrapper around `curl` and `mcporter` for DevOps automation.
-
-```bash
-./setup.sh
-mcporter call --server weiyun --tool weiyun.list limit=10
 ```
 
 -----

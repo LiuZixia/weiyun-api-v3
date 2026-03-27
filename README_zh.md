@@ -13,7 +13,7 @@
 * **完整的文件管理体系**：目录拉取、批量获取直链下载、回收与彻底删除、分享外链生成。
 * **高阶的稳定上传协议**：完整实现了官方的 FTN 双段异步协议（两阶段校验：预传 + 分片秒传校验）。
 * **原生独家的 SHA1 算法内核**：高度还原封装了微云服务器强制要求提取的"小端序内部寄存器状态"（Little-Endian SHA1 Register State）的提取能力。
-* **原生多语言驱动**：提供了独立、原生、无缝对接的 Python、Go、PHP 和 Shell 客户端实现。
+* **原生多语言驱动**：提供了独立、原生、无缝对接的 Python、Go 和 PHP 客户端实现。
 * **AI 架构原生兼容**：该设计从基底上就完美对标模型上下文协议 (Model Context Protocol, MCP)，能够被诸如 Claude、GPT 等直接调用。
 
 ---
@@ -106,17 +106,6 @@ WEIYUN_MCP_TOKEN=xxx php integration_tests.php --test all  # 集成测试
 ```
 
 👉 [详情](php/README.md)
-
-### 4. Shell / DevOps 篇
-
-原生打通了全局命令行的环境变量配置和与 `mcporter` NPM 核心包绑定的全栈指令方案。这套体系适合配置到 CI/CD 流程中作为自动备份等脚本工具运行。
-
-```bash
-./shell/setup.sh
-mcporter call --server weiyun --tool weiyun.list limit=10
-```
-
-👉 [详情](shell/README.md)
 
 ---
 
