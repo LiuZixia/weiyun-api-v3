@@ -1,15 +1,8 @@
 # Weiyun API V3 (MCP Wrapper)
 
-[![Python Build](https://github.com/LiuZixia/weiyun-api-v3/actions/workflows/ci.yml/badge.svg?job=test-python)](https://github.com/LiuZixia/weiyun-api-v3/actions/workflows/ci.yml)
-[![Go Build](https://github.com/LiuZixia/weiyun-api-v3/actions/workflows/ci.yml/badge.svg?job=test-go)](https://github.com/LiuZixia/weiyun-api-v3/actions/workflows/ci.yml)
-[![PHP Build](https://github.com/LiuZixia/weiyun-api-v3/actions/workflows/ci.yml/badge.svg?job=test-php)](https://github.com/LiuZixia/weiyun-api-v3/actions/workflows/ci.yml)
-[![Shell Build](https://github.com/LiuZixia/weiyun-api-v3/actions/workflows/ci.yml/badge.svg?job=test-shell)](https://github.com/LiuZixia/weiyun-api-v3/actions/workflows/ci.yml)
+**English** | [中文](README_zh.md)
 
-**Integration Features:**
-[![List Directory](https://github.com/LiuZixia/weiyun-api-v3/actions/workflows/ci.yml/badge.svg?job=test-list)](https://github.com/LiuZixia/weiyun-api-v3/actions/workflows/ci.yml)
-[![Upload File](https://github.com/LiuZixia/weiyun-api-v3/actions/workflows/ci.yml/badge.svg?job=test-upload)](https://github.com/LiuZixia/weiyun-api-v3/actions/workflows/ci.yml)
-[![Download File](https://github.com/LiuZixia/weiyun-api-v3/actions/workflows/ci.yml/badge.svg?job=test-download)](https://github.com/LiuZixia/weiyun-api-v3/actions/workflows/ci.yml)
-[![Delete File](https://github.com/LiuZixia/weiyun-api-v3/actions/workflows/ci.yml/badge.svg?job=test-delete)](https://github.com/LiuZixia/weiyun-api-v3/actions/workflows/ci.yml)
+[![CI Build and Test](https://github.com/LiuZixia/weiyun-api-v3/actions/workflows/ci.yml/badge.svg)](https://github.com/LiuZixia/weiyun-api-v3/actions/workflows/ci.yml)
 
 > **Note**: Integration tests automatically isolate their operations within a dedicated `/CI` folder at the root of your Weiyun drive to prevent polluting personal files. It strictly validates file transfers using specific fixtures (e.g., `tencent-weiyun.zip`, `test_{language}_upload_{timestamp}`).
 
@@ -42,7 +35,7 @@ The most critical part of this API is the `weiyun.upload` tool. Unlike standard 
 
 ### Prerequisites
 
-You must obtain an `mcp_token` from the [Weiyun Authorization Page](https://www.weiyun.com/disk/authorization).
+You must obtain an `mcp_token` from the [Weiyun Authorization Page](https://www.weiyun.com/act/openclaw).
 
 ### Environment Variables
 
