@@ -27,8 +27,6 @@ The most critical part of this API is the `weiyun.upload` tool. Unlike standard 
 2.  **Final Block**: A standard big-endian SHA1 hexdigest of the entire file.
 3.  **Check SHA**: A specific intermediate state calculated before the final 128-byte footer.
 
-*(Note: Replace with a sequence diagram of the Weiyun Upload Handshake if generating visual docs)*
-
 -----
 
 ## 🚀 Getting Started
@@ -56,21 +54,39 @@ The Python version uses a custom `SHA1` class to extract internal registers that
 from weiyun_api import WeiyunClient
 
 client = WeiyunClient(token="your_token")
-# Simple upload with auto-chunking and hashing
 client.upload("./my_file.zip", pdir_key="root_key")
+res = client.download([{"file_id": "f_123", "pdir_key": "d_456"}])
+client.delete(file_list=[{"file_id": "f_123", "pdir_key": "d_456"}], delete_completely=True)
+client.gen_share_link(file_list=[{"file_id": "f_123", "pdir_key": "d_456"}])
+```
+
+**Tests:**
+```bash
+cd python
+pip install requests
+python test_weiyun_api.py                        # unit tests
+WEIYUN_MCP_TOKEN=xxx python integration_tests.py # integration tests
 ```
 
 ### 2\. Go (High Performance)
 
-Uses a modified version of `crypto/sha1` to access the underlying `digest` struct via `reflect`.
+Uses `reflect` and `unsafe.Pointer` to access the `crypto/sha1` internal digest struct.
 
 ```go
-import "github.com/youruser/weiyun-api-v3/go"
+import "github.com/youruser/weiyun-api-v3/go/weiyun"
 
-func main() {
-    api := weiyun.New("TOKEN")
-    list, _ := api.ListFiles(50, 0)
-}
+api := weiyun.New("TOKEN")
+api.Upload("./my_file.zip", "", 50)
+api.Download([]map[string]interface{}{{"file_id": "f_123", "pdir_key": "d_456"}})
+api.Delete([]map[string]interface{}{{"file_id": "f_123", "pdir_key": "d_456"}}, nil, true)
+api.GenShareLink([]map[string]interface{}{{"file_id": "f_123", "pdir_key": "d_456"}}, nil, "")
+```
+
+**Tests:**
+```bash
+cd go
+go test ./weiyun/... -v                                          # unit tests
+WEIYUN_MCP_TOKEN=xxx go test -tags integration ./weiyun/... -v  # integration tests
 ```
 
 ### 3\. PHP
@@ -78,8 +94,18 @@ func main() {
 Ideal for web-based file managers. Implements the register rotation in pure PHP to handle 32-bit unsigned integers correctly.
 
 ```php
-$weiyun = new Weiyun\Client($token);
-$link = $weiyun->getDownloadLink($fileId, $pdirKey);
+$client = new Weiyun\Client($token);
+$client->upload("/tmp/my_file.zip");
+$client->download([["file_id" => "f_123", "pdir_key" => "d_456"]]);
+$client->delete([["file_id" => "f_123", "pdir_key" => "d_456"]], null, true);
+$client->genShareLink([["file_id" => "f_123", "pdir_key" => "d_456"]]);
+```
+
+**Tests:**
+```bash
+cd php
+./vendor/bin/phpunit tests/                                        # unit tests
+WEIYUN_MCP_TOKEN=xxx php integration_tests.php --test all         # integration tests
 ```
 
 ### 4\. Shell (CLI)
@@ -88,7 +114,6 @@ A wrapper around `curl` and `mcporter` for DevOps automation.
 
 ```bash
 ./setup.sh
-# List top 10 files
 mcporter call --server weiyun --tool weiyun.list limit=10
 ```
 
@@ -98,11 +123,11 @@ mcporter call --server weiyun --tool weiyun.list limit=10
 
 | Tool | Description | Key Parameters |
 | :--- | :--- | :--- |
-| `weiyun.list` | Query directory contents | `limit`, `offset`, `dir_key` |
+| `weiyun.list` | Query directory contents | `limit`, `offset`, `dir_key`, `pdir_key` |
 | `weiyun.download` | Get HTTPS download links | `items` (file\_id + pdir\_key) |
 | `weiyun.upload` | Two-phase file upload | `file_sha`, `block_sha_list`, `file_data` |
-| `weiyun.delete` | Batch delete files/folders | `file_list`, `delete_completely` |
-| `weiyun.gen_share_link` | Create public share links | `file_list`, `share_name` |
+| `weiyun.delete` | Batch delete files/folders | `file_list`, `dir_list`, `delete_completely` |
+| `weiyun.gen_share_link` | Create public share links | `file_list`, `dir_list`, `share_name` |
 
 -----
 
@@ -116,14 +141,9 @@ mcporter call --server weiyun --tool weiyun.list limit=10
 
 Contributions are welcome\! Specifically, we are looking for:
 
-  * Refined Go implementations for faster SHA1 register extraction.
   * Node.js/TypeScript port.
   * Improved documentation for the `check_data` Base64 padding.
 
 ## 📜 License
 
 MIT License. See `LICENSE` for details.
-
------
-
-Would you like me to generate the **Go** or **PHP** boilerplate code for the specialized SHA1 register extraction to include in this library?

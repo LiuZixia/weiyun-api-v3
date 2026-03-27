@@ -113,20 +113,76 @@ class Client {
         }
 
         $resDecoded = json_decode($result, true);
-        if (isset($resDecoded['result']['content'][0]['text'])) {
-            return json_decode($resDecoded['result']['content'][0]['text'], true);
+        if (isset($resDecoded['result']['content'])) {
+            foreach ($resDecoded['result']['content'] as $item) {
+                if (isset($item['type']) && $item['type'] === 'text') {
+                    return json_decode($item['text'], true);
+                }
+            }
         }
         return $resDecoded;
     }
 
-    public function listFiles($limit = 50, $offset = 0) {
-        return $this->call("weiyun.list", ["limit" => $limit, "offset" => $offset]);
+    /**
+     * List files and directories.
+     *
+     * @param int $limit
+     * @param int $getType
+     * @param int $offset
+     * @param string|null $dirKey
+     * @param string|null $pdirKey
+     */
+    public function listFiles($limit = 50, $getType = 0, $offset = 0, $dirKey = null, $pdirKey = null) {
+        $args = ["limit" => $limit, "get_type" => $getType, "offset" => $offset];
+        if ($dirKey !== null) $args["dir_key"] = $dirKey;
+        if ($pdirKey !== null) $args["pdir_key"] = $pdirKey;
+        return $this->call("weiyun.list", $args);
     }
 
-    public function getDownloadLink($fileId, $pdirKey) {
-        return $this->call("weiyun.download", ["items" => [["file_id" => $fileId, "pdir_key" => $pdirKey]]]);
+    /**
+     * Get HTTPS download links for a list of items.
+     *
+     * @param array $items  Array of ["file_id" => ..., "pdir_key" => ...]
+     */
+    public function download($items) {
+        return $this->call("weiyun.download", ["items" => $items]);
     }
 
+    /**
+     * Delete files and/or directories.
+     *
+     * @param array|null $fileList        Array of ["file_id" => ..., "pdir_key" => ...]
+     * @param array|null $dirList         Array of ["dir_key" => ..., "pdir_key" => ...]
+     * @param bool $deleteCompletely      If true, permanently deletes; otherwise moves to trash
+     */
+    public function delete($fileList = null, $dirList = null, $deleteCompletely = false) {
+        $args = ["delete_completely" => $deleteCompletely];
+        if ($fileList) $args["file_list"] = $fileList;
+        if ($dirList) $args["dir_list"] = $dirList;
+        return $this->call("weiyun.delete", $args);
+    }
+
+    /**
+     * Generate a public share link.
+     *
+     * @param array|null $fileList   Array of ["file_id" => ..., "pdir_key" => ...]
+     * @param array|null $dirList    Array of ["dir_key" => ..., "pdir_key" => ...]
+     * @param string|null $shareName Custom name for the share link
+     */
+    public function genShareLink($fileList = null, $dirList = null, $shareName = null) {
+        $args = [];
+        if ($fileList) $args["file_list"] = $fileList;
+        if ($dirList) $args["dir_list"] = $dirList;
+        if ($shareName !== null) $args["share_name"] = $shareName;
+        return $this->call("weiyun.gen_share_link", $args);
+    }
+
+    /**
+     * Calculate upload parameters (chunked SHA1 states + MD5).
+     *
+     * @param string $filePath
+     * @return array
+     */
     public function calcUploadParams($filePath) {
         $fileSize = filesize($filePath);
         $blockSize = 524288;
@@ -139,7 +195,7 @@ class Client {
         $sha1 = new SHA1();
         $md5Ctx = hash_init('md5');
         $blockShaList = [];
-        
+
         $fp = fopen($filePath, 'rb');
         for ($offset = 0; $offset < $beforeBlockSize; $offset += $blockSize) {
             $data = fread($fp, $blockSize);
@@ -148,30 +204,145 @@ class Client {
             $blockShaList[] = $sha1->get_state();
         }
 
-        $betweenData = fread($fp, $lastBlockSize - $checkBlockSize);
-        $sha1->update($betweenData);
-        hash_update($md5Ctx, $betweenData);
+        $betweenLen = $lastBlockSize - $checkBlockSize;
+        $betweenData = $betweenLen > 0 ? fread($fp, $betweenLen) : "";
+        if ($betweenLen > 0) {
+            $sha1->update($betweenData);
+            hash_update($md5Ctx, $betweenData);
+        }
         $checkSha = $sha1->get_state();
 
-        $checkDataBytes = fread($fp, $checkBlockSize);
-        $sha1->update($checkDataBytes);
-        hash_update($md5Ctx, $checkDataBytes);
-        
+        $checkDataBytes = $checkBlockSize > 0 ? fread($fp, $checkBlockSize) : "";
+        if ($checkBlockSize > 0) {
+            $sha1->update($checkDataBytes);
+            hash_update($md5Ctx, $checkDataBytes);
+        }
+
         $fileSha = $sha1->hexdigest();
         $fileMd5 = hash_final($md5Ctx);
         $checkData = base64_encode($checkDataBytes);
-        
+
         $blockShaList[] = $fileSha;
         fclose($fp);
 
         return [
-            "file_size" => $fileSize,
-            "file_sha" => $fileSha,
-            "file_md5" => $fileMd5,
+            "filename"       => basename($filePath),
+            "file_size"      => $fileSize,
+            "file_sha"       => $fileSha,
+            "file_md5"       => $fileMd5,
             "block_sha_list" => $blockShaList,
-            "check_sha" => $checkSha,
-            "check_data" => $checkData,
-            "filename" => basename($filePath)
+            "check_sha"      => $checkSha,
+            "check_data"     => $checkData,
         ];
+    }
+
+    /**
+     * Upload a file using the Weiyun two-phase FTN protocol.
+     *
+     * @param string $filePath
+     * @param string|null $pdirKey  Target directory key (null = root)
+     * @param int $maxRounds        Maximum number of upload rounds
+     * @return array  ["file_id" => ..., "filename" => ...]
+     */
+    public function upload($filePath, $pdirKey = null, $maxRounds = 50) {
+        $params = $this->calcUploadParams($filePath);
+        $fileSize = $params["file_size"];
+        $filename = $params["filename"];
+
+        $preUploadArgs = [
+            "filename"       => $filename,
+            "file_size"      => $fileSize,
+            "file_sha"       => $params["file_sha"],
+            "file_md5"       => $params["file_md5"],
+            "block_sha_list" => $params["block_sha_list"],
+            "check_sha"      => $params["check_sha"],
+            "check_data"     => $params["check_data"],
+        ];
+        if ($pdirKey !== null) {
+            $preUploadArgs["pdir_key"] = $pdirKey;
+        }
+
+        $fileData = file_get_contents($filePath);
+
+        $roundNum = 0;
+        while ($roundNum < $maxRounds) {
+            $roundNum++;
+            $preRsp = $this->call("weiyun.upload", $preUploadArgs);
+
+            if (!empty($preRsp["error"])) {
+                throw new \Exception("预上传失败: " . $preRsp["error"]);
+            }
+
+            if (!empty($preRsp["file_exist"])) {
+                return [
+                    "file_id"  => $preRsp["file_id"] ?? "",
+                    "filename" => $preRsp["filename"] ?? $filename,
+                ];
+            }
+
+            $chList = $preRsp["channel_list"] ?? [];
+            $uk = $preRsp["upload_key"] ?? "";
+            $ex = $preRsp["ex"] ?? "";
+
+            // Find a channel with data remaining
+            $ch = null;
+            foreach ($chList as $c) {
+                if ((int)($c["len"] ?? 0) > 0) {
+                    $ch = $c;
+                    break;
+                }
+            }
+
+            if ($ch === null) {
+                $state = (int)($preRsp["upload_state"] ?? 0);
+                if ($state === 2) {
+                    return [
+                        "file_id"  => $preRsp["file_id"] ?? "",
+                        "filename" => $preRsp["filename"] ?? $filename,
+                    ];
+                }
+                throw new \Exception("无可上传通道，upload_state={$state}");
+            }
+
+            $offset    = (int)$ch["offset"];
+            $length    = (int)$ch["len"];
+            $channelId = (int)$ch["id"];
+            $actualLen = min($length, strlen($fileData) - $offset);
+
+            $chunk    = substr($fileData, $offset, $actualLen);
+            $chunkB64 = base64_encode($chunk);
+
+            $cl = [];
+            foreach ($chList as $c) {
+                $cl[] = ["id" => (int)$c["id"], "offset" => (int)$c["offset"], "len" => (int)$c["len"]];
+            }
+
+            $upRsp = $this->call("weiyun.upload", [
+                "filename"     => $filename,
+                "file_size"    => $fileSize,
+                "file_sha"     => $params["file_sha"],
+                "block_sha_list" => [],
+                "check_sha"    => $params["check_sha"],
+                "upload_key"   => $uk,
+                "channel_list" => $cl,
+                "channel_id"   => $channelId,
+                "ex"           => $ex,
+                "file_data"    => $chunkB64,
+            ]);
+
+            if (!empty($upRsp["error"])) {
+                throw new \Exception("分片上传失败: " . $upRsp["error"]);
+            }
+
+            $state = (int)($upRsp["upload_state"] ?? 0);
+            if ($state === 2) {
+                return [
+                    "file_id"  => $upRsp["file_id"] ?? "",
+                    "filename" => $upRsp["filename"] ?? $filename,
+                ];
+            }
+        }
+
+        throw new \Exception("超过最大上传轮数 ({$maxRounds})，上传未完成");
     }
 }
